@@ -1,81 +1,74 @@
-if(!file.exists("./data")){dir.create("./data")}
-fileUrl <- "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
-download.file(fileUrl,destfile="./data/Dataset.zip",method="curl")
-unzip(zipfile="./data/Dataset.zip",exdir="./data")
-path_rf <- file.path("./data" , "UCI HAR Dataset")
-files<-list.files(path_rf, recursive=TRUE)
-files
-dataActivityTest  <- read.table(file.path(path_rf, "test" , "Y_test.txt" ),header = FALSE)
-dataActivityTrain <- read.table(file.path(path_rf, "train", "Y_train.txt"),header = FALSE)
+# Step1. Merges the training and the test sets to create one data set.
+# setwd("~/Desktop/Online Coursera/Coursera-Getting-and-Cleaning-Data/peer_assessment/")
+trainData <- read.table("./data/train/X_train.txt")
+dim(trainData) # 7352*561
+head(trainData)
+trainLabel <- read.table("./data/train/y_train.txt")
+table(trainLabel)
+trainSubject <- read.table("./data/train/subject_train.txt")
+testData <- read.table("./data/test/X_test.txt")
+dim(testData) # 2947*561
+testLabel <- read.table("./data/test/y_test.txt") 
+table(testLabel) 
+testSubject <- read.table("./data/test/subject_test.txt")
+joinData <- rbind(trainData, testData)
+dim(joinData) # 10299*561
+joinLabel <- rbind(trainLabel, testLabel)
+dim(joinLabel) # 10299*1
+joinSubject <- rbind(trainSubject, testSubject)
+dim(joinSubject) # 10299*1
 
-dataSubjectTrain <- read.table(file.path(path_rf, "train", "subject_train.txt"),header = FALSE)
-dataSubjectTest  <- read.table(file.path(path_rf, "test" , "subject_test.txt"),header = FALSE)
+# Step2. Extracts only the measurements on the mean and standard 
+# deviation for each measurement. 
+features <- read.table("./data/features.txt")
+dim(features)  # 561*2
+meanStdIndices <- grep("mean\\(\\)|std\\(\\)", features[, 2])
+length(meanStdIndices) # 66
+joinData <- joinData[, meanStdIndices]
+dim(joinData) # 10299*66
+names(joinData) <- gsub("\\(\\)", "", features[meanStdIndices, 2]) # remove "()"
+names(joinData) <- gsub("mean", "Mean", names(joinData)) # capitalize M
+names(joinData) <- gsub("std", "Std", names(joinData)) # capitalize S
+names(joinData) <- gsub("-", "", names(joinData)) # remove "-" in column names 
 
+# Step3. Uses descriptive activity names to name the activities in 
+# the data set
+activity <- read.table("./data/activity_labels.txt")
+activity[, 2] <- tolower(gsub("_", "", activity[, 2]))
+substr(activity[2, 2], 8, 8) <- toupper(substr(activity[2, 2], 8, 8))
+substr(activity[3, 2], 8, 8) <- toupper(substr(activity[3, 2], 8, 8))
+activityLabel <- activity[joinLabel[, 1], 2]
+joinLabel[, 1] <- activityLabel
+names(joinLabel) <- "activity"
 
-dataFeaturesTest  <- read.table(file.path(path_rf, "test" , "X_test.txt" ),header = FALSE)
-dataFeaturesTrain <- read.table(file.path(path_rf, "train", "X_train.txt"),header = FALSE)
+# Step4. Appropriately labels the data set with descriptive activity 
+# names. 
+names(joinSubject) <- "subject"
+cleanedData <- cbind(joinSubject, joinLabel, joinData)
+dim(cleanedData) # 10299*68
+write.table(cleanedData, "merged_data.txt") # write out the 1st dataset
 
-str(dataActivityTest) 
-str(dataActivityTrain) 
-str(dataSubjectTrain)  
-str(dataSubjectTest)
-str(dataFeaturesTest)
-
-str(dataFeaturesTrain)
-# Merge the files
-
-dataSubject <- rbind(dataSubjectTrain, dataSubjectTest)
-dataActivity<- rbind(dataActivityTrain, dataActivityTest)
-dataFeatures<- rbind(dataFeaturesTrain, dataFeaturesTest)
-
-names(dataSubject)<-c("subject")
-names(dataActivity)<- c("activity")
-dataFeaturesNames <- read.table(file.path(path_rf, "features.txt"),head=FALSE)
-names(dataFeatures)<- dataFeaturesNames$V2
-dataCombine <- cbind(dataSubject, dataActivity)
-Data <- cbind(dataFeatures, dataCombine)
-
-#Mean and SD for each measurement
-subdataFeaturesNames<-dataFeaturesNames$V2[grep("mean\\(\\)|std\\(\\)", dataFeaturesNames$V2)]
-
-#Subset the data frame Data by seleted names of Features
-selectedNames<-c(as.character(subdataFeaturesNames), "subject", "activity" )
-Data<-subset(Data,select=selectedNames)
-#Check the structures of the data frame Data
-str(Data)
-
-#descriptive activity names to name the activities in the data set
-#Read descriptive activity names from “activity_labels.txt”
-
-activityLabels <- read.table(file.path(path_rf, "activity_labels.txt"),header = FALSE)
-#facorize Variale activity in the data frame Data using descriptive activity names
-
-
-head(Data$activity,30)
-
-
-#Appropriately labels the data set with descriptive variable names
-#In the former part, variables activity and subject and names of the activities have been labelled using descriptive names.In this part, Names of Feteatures will labelled using descriptive variable names.
-names(Data)<-gsub("^t", "time", names(Data))
-names(Data)<-gsub("^f", "frequency", names(Data))
-names(Data)<-gsub("Acc", "Accelerometer", names(Data))
-names(Data)<-gsub("Gyro", "Gyroscope", names(Data))
-names(Data)<-gsub("Mag", "Magnitude", names(Data))
-names(Data)<-gsub("BodyBody", "Body", names(Data))
-
-names(Data)
-
-#Creates a second,independent tidy data set and ouput it
-#In this part,a second, independent tidy data set will be created with the average of each variable for each activity and each subject based on the data set in step 4.
-
-library(plyr);
-Data2<-aggregate(. ~subject + activity, Data, mean)
-Data2<-Data2[order(Data2$subject,Data2$activity),]
-write.table(Data2, file = "tidydata.txt",row.name=FALSE)
-#Codebook
-
-library(knitr)
-knit2html("codebook.Rmd");
+# Step5. Creates a second, independent tidy data set with the average of 
+# each variable for each activity and each subject. 
+subjectLen <- length(table(joinSubject)) # 30
+activityLen <- dim(activity)[1] # 6
+columnLen <- dim(cleanedData)[2]
+result <- matrix(NA, nrow=subjectLen*activityLen, ncol=columnLen) 
+result <- as.data.frame(result)
+colnames(result) <- colnames(cleanedData)
+row <- 1
+for(i in 1:subjectLen) {
+    for(j in 1:activityLen) {
+        result[row, 1] <- sort(unique(joinSubject)[, 1])[i]
+        result[row, 2] <- activity[j, 2]
+        bool1 <- i == cleanedData$subject
+        bool2 <- activity[j, 2] == cleanedData$activity
+        result[row, 3:columnLen] <- colMeans(cleanedData[bool1&bool2, 3:columnLen])
+        row <- row + 1
+    }
+}
+head(result)
+write.table(result, "data_with_means.txt") # write out the 2nd dataset
 
 
 
